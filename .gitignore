@@ -1,0 +1,9 @@
+/myvenv
+/config.py
+/bin
+/obj
+*.pdb
+*.exe
+.idea
+bot_keys.py
+.env

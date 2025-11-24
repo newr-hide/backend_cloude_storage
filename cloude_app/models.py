@@ -1,5 +1,5 @@
 from django.db import models
-from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin, Group, Permission
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
@@ -34,9 +34,24 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=True)
     is_admin = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)
-    
     objects = UserManager()
+    groups = models.ManyToManyField(
+        Group,
+        related_name='custom_user_groups',  
+        verbose_name=_('groups'),
+        blank=True,
+        help_text=_('The groups this user belongs to.'),
+        related_query_name='custom_user'
+    )
     
+    user_permissions = models.ManyToManyField(
+        Permission,
+        related_name='custom_user_permissions',  
+        verbose_name=_('user permissions'),
+        blank=True,
+        help_text=_('User specific permissions.'),
+        related_query_name='custom_user'
+    )
     USERNAME_FIELD = 'login'
     REQUIRED_FIELDS = ['email']
     

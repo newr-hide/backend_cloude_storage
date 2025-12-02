@@ -11,9 +11,20 @@ class UserSerializer(serializers.ModelSerializer):
         fields = ['id','login', 'email']
 
 class UserFileSerializer(serializers.ModelSerializer):
+    size = serializers.SerializerMethodField()
+    def get_size(self, obj):
+        try:
+            return obj.file.size
+        except:
+            return 0
     class Meta:
         model = UserFile
-        fields = '__all__'
+        fields = ['id', 'file', 'comment', 'size', 'uploaded_at']
+        read_only_fields = ['uploaded_at']
+
+    def create(self, validated_data):
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
 
 
 User = get_user_model()

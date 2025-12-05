@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin, Group, Permission
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+import uuid
 
 class UserManager(BaseUserManager):
     def create_user(self, login, email, password=None):
@@ -70,3 +71,12 @@ class UserFile(models.Model):
     
     def __str__(self):
         return f'{self.user.login} - {self.file.name}'
+    
+class FileShareLink(models.Model):
+    file = models.ForeignKey('UserFile', on_delete=models.CASCADE)
+    token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def is_expired(self):
+        return timezone.now() > self.expires_at

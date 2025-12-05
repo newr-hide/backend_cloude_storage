@@ -4,6 +4,7 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.core.exceptions import ValidationError
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth import get_user_model
+import os
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
@@ -20,12 +21,12 @@ class UserFileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserFile
         fields = ['id', 'file', 'comment', 'size', 'uploaded_at']
-        read_only_fields = ['uploaded_at']
+        read_only_fields = ['uploaded_at', 'size']
 
     def create(self, validated_data):
         validated_data['user'] = self.context['request'].user
         return super().create(validated_data)
-
+      
 
 User = get_user_model()
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):

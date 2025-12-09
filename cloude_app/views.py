@@ -3,7 +3,8 @@ import mimetypes
 from django.http import HttpResponse
 from .models import User, UserFile, FileShareLink
 from .serializers import CustomTokenObtainPairSerializer, RegisterSerializer, UserSerializer, UserFileSerializer
-from rest_framework import viewsets, status, generics
+from rest_framework import viewsets, status, generics, filters
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -15,6 +16,8 @@ from django.shortcuts import get_object_or_404
 import os
 import uuid
 from django.utils import timezone
+from rest_framework.exceptions import APIException
+from .permissions import IsAdminUser
 
 class UsersViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
@@ -28,15 +31,43 @@ class UserDetailView(generics.RetrieveAPIView):
 class UserFileViewSet(viewsets.ModelViewSet):
     queryset = UserFile.objects.all()
     serializer_class = UserFileSerializer
-    permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]  # Парсеры для файлов
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ['user', 'uploaded_at'] # фильтры
+    search_fields = ['original_name', 'comment']
 
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve', 'update', 'partial_update', 'destroy']:
+            return [IsAdminUser()]
+        return [permissions.IsAuthenticated()]
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
     def get_queryset(self):
-        # Это только файлы текущего пользователя
-        return UserFile.objects.filter(user=self.request.user)
+        queryset = super().get_queryset()
+        
+        # Фильтрация по пользователю для админов
+        user_id = self.request.query_params.get('user_id')
+        if self.request.user.is_admin and user_id:
+            return queryset.filter(user_id=user_id)
+        
+        # Для пользователей только свои файлы
+        if not self.request.user.is_admin:
+            return queryset.filter(user=self.request.user)
+        
+        return queryset
+
+class AdminFileFilterView(generics.ListAPIView):
+    serializer_class = UserFileSerializer
+    permission_classes = [IsAdminUser]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['user', 'uploaded_at']
+    
+    def get_queryset(self):
+        user_id = self.kwargs.get('user_id')
+        if user_id:
+            return UserFile.objects.filter(user_id=user_id)
+        return UserFile.objects.all()
     
     
     
@@ -52,6 +83,7 @@ class DownloadFileView(APIView):
         try:
             file_obj = get_object_or_404(UserFile, pk=pk)
             file_path = file_obj.file.path
+            file_obj.download()
             
             if not os.path.exists(file_path):
                 return Response({'error': 'Файл не найден'}, status=404)
@@ -73,13 +105,13 @@ class DeleteFileView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def delete(self, request, pk):
-       
-        file_obj = get_object_or_404(UserFile, pk=pk, user=request.user)
-        if file_obj.file:
-            file_obj.file.delete()
-        file_obj.delete()
-        
-        return Response({'message': 'Файл удален'}, status=204)
+        try:
+            file_obj = get_object_or_404(UserFile, pk=pk, user=request.user)
+            file_obj.delete()
+            
+            return Response({'message': 'Файл удален'}, status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            raise APIException(f"Ошибка при удалении файла: {str(e)}", code=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
 
 class RegisterViewSet(viewsets.GenericViewSet):
@@ -159,4 +191,32 @@ class PublicDownloadView(APIView):
             return Response({'error': 'Неверная ссылка'}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+class AdminUserViewSet(viewsets.GenericViewSet):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    permission_classes = [IsAdminUser]
+    
+    def list(self, request):
+        users = self.get_queryset()
+        serializer = self.serializer_class(users, many=True)
+        return Response(serializer.data)
+    
+    def destroy(self, request, pk=None):
+        user = self.get_object()
+        user.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    
+    def partial_update(self, request, pk=None):
+        user = self.get_object()
+        is_admin = request.data.get('is_admin', None)
+        
+        if is_admin is not None:
+            user.is_admin = is_admin
+            user.save()
+            return Response(self.serializer_class(user).data)
+        
+        return Response(status=status.HTTP_400_BAD_REQUEST)
+    
+
     

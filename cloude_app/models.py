@@ -1,3 +1,5 @@
+import datetime
+import os
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin, Group, Permission
 from django.utils import timezone
@@ -26,6 +28,7 @@ class UserManager(BaseUserManager):
             password=password,
         )
         user.is_admin = True
+        user.is_active = True  
         user.save(using=self._db)
         return user
     
@@ -68,7 +71,34 @@ class UserFile(models.Model):
     file = models.FileField(upload_to='user_files/')
     comment = models.TextField(verbose_name="Комментарий", blank=True, default='')
     uploaded_at = models.DateTimeField(auto_now_add=True)
-    
+
+    original_name = models.CharField(max_length=255, blank=True, null=True)
+    last_downloaded = models.DateTimeField(blank=True, null=True)
+    file_size = models.PositiveIntegerField(blank=True, null=True)
+
+    def save(self, *args, **kwargs):
+
+        if not self.original_name:
+            self.original_name = os.path.basename(self.file.name)
+        
+        if not self.file_size:
+            self.file_size = self.file.size
+        
+        super().save(*args, **kwargs)
+
+    def download(self):
+        self.last_downloaded = datetime.datetime.now()
+        self.save()
+
+    def delete(self, *args, **kwargs):
+        try:
+            if self.file:
+                if os.path.isfile(self.file.path):
+                    os.remove(self.file.path)
+        except Exception as e:
+            print(f"Ошибка при удалении файла: {str(e)}")
+        super().delete(*args, **kwargs)
+
     def __str__(self):
         return f'{self.user.login} - {self.file.name}'
     

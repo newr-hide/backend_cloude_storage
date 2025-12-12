@@ -1,6 +1,6 @@
 
 import mimetypes
-from django.http import HttpResponse
+from django.http import HttpResponse, StreamingHttpResponse
 from .models import User, UserFile, FileShareLink
 from .serializers import CustomTokenObtainPairSerializer, RegisterSerializer, UserSerializer, UserFileSerializer
 from rest_framework import viewsets, status, generics, filters
@@ -17,7 +17,10 @@ import os
 import uuid
 from django.utils import timezone
 from rest_framework.exceptions import APIException
-from .permissions import IsAdminUser
+from .permissions import IsAdminUser, IsAdminUserOrOwner
+import logging
+
+logger = logging.getLogger(__name__)
 
 class UsersViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
@@ -28,6 +31,7 @@ class UserDetailView(generics.RetrieveAPIView):
     serializer_class = UserSerializer
     lookup_field = 'id'
 
+
 class UserFileViewSet(viewsets.ModelViewSet):
     queryset = UserFile.objects.all()
     serializer_class = UserFileSerializer
@@ -37,9 +41,12 @@ class UserFileViewSet(viewsets.ModelViewSet):
     search_fields = ['original_name', 'comment']
 
     def get_permissions(self):
-        if self.action in ['list', 'retrieve', 'update', 'partial_update', 'destroy']:
+        if self.action in ['list', 'retrieve', 'destroy']:
             return [IsAdminUser()]
+        elif self.action in ['update', 'partial_update']:
+            return [IsAdminUserOrOwner()]
         return [permissions.IsAuthenticated()]
+        
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
@@ -56,6 +63,22 @@ class UserFileViewSet(viewsets.ModelViewSet):
             return queryset.filter(user=self.request.user)
         
         return queryset
+    
+    def update(self, request, *args, **kwargs):
+
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        
+        if not request.user.is_admin and instance.user != request.user:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
+    
+        
+        
 
 class AdminFileFilterView(generics.ListAPIView):
     serializer_class = UserFileSerializer
@@ -217,6 +240,54 @@ class AdminUserViewSet(viewsets.GenericViewSet):
             return Response(self.serializer_class(user).data)
         
         return Response(status=status.HTTP_400_BAD_REQUEST)
-    
 
-    
+
+class ShowFileView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        try:
+            file_obj = get_object_or_404(UserFile, pk=pk)
+            file_path = file_obj.file.path
+            filename = file_obj.original_name or os.path.basename(file_obj.file.name)
+            file_extension = os.path.splitext(filename)[1].lower()
+            
+            content_type = mimetypes.guess_type(file_path)[0] or 'application/octet-stream'
+            
+            if not os.path.exists(file_path):
+                return Response({'error': 'Файл не найден'}, status=status.HTTP_404_NOT_FOUND)
+            
+            if file_extension in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff']:
+                with open(file_path, 'rb') as f:
+                    response = HttpResponse(f.read(), content_type=content_type)
+                    response['Content-Disposition'] = f'inline; filename="{filename}"'
+                    response['Content-Length'] = file_obj.file_size
+                    response['Accept-Ranges'] = 'bytes'
+                    return response
+            
+            elif file_extension in ['.pdf']:
+                with open(file_path, 'rb') as f:
+                    response = HttpResponse(f.read(), content_type='application/pdf')
+
+                    response['Content-Disposition'] = f'inline; filename="{filename}"'
+                    return response
+            
+            else:
+                def file_iterator():
+                    with open(file_path, 'rb') as fh:
+                        while True:
+                            chunk = fh.read(8192)
+                            if not chunk:
+                                break
+                            yield chunk
+                
+                response = StreamingHttpResponse(
+                    file_iterator(),
+                    content_type=content_type
+                )
+                response['Content-Disposition'] = f'attachment; filename="{filename}"'
+                response['Content-Length'] = file_obj.file_size
+                return response
+            
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

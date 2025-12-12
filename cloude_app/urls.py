@@ -1,7 +1,7 @@
 
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import AdminFileFilterView, AdminUserViewSet, CreateShareLinkView, DeleteFileView, MyTokenObtainPairView, PublicDownloadView, RegisterViewSet, UserFileViewSet, UserDetailView, DownloadFileView
+from .views import AdminFileFilterView, AdminUserViewSet, CreateShareLinkView, DeleteFileView, MyTokenObtainPairView, PublicDownloadView, RegisterViewSet, ShowFileView, UserFileViewSet, UserDetailView, DownloadFileView
 
 
 router = DefaultRouter()
@@ -20,6 +20,7 @@ urlpatterns = [
     path('api/create-share-link/', CreateShareLinkView.as_view(), name='create-share-link'),
     path('api/download-public/<str:token>/', PublicDownloadView.as_view(), name='public-download'),
     path('api/admin/users/<int:user_id>/files/', AdminFileFilterView.as_view(), name='user-files-filter'),
+    path('api/show-file/<int:pk>/', ShowFileView.as_view(), name='show-file'),
 ]
 
 

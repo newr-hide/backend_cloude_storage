@@ -14,6 +14,8 @@ class UserSerializer(serializers.ModelSerializer):
         fields = ['id','login', 'email', 'is_active', 'is_admin', 'date_joined']
         read_only_fields = ['date_joined']
 
+
+
 class UserFileSerializer(serializers.ModelSerializer):
     file_size = serializers.SerializerMethodField()
     def get_file_size(self, obj):
@@ -28,8 +30,17 @@ class UserFileSerializer(serializers.ModelSerializer):
     )
     class Meta:
         model = UserFile
-        fields = '__all__'
-        read_only_fields = ['user', 'original_name', 'uploaded_at', 'file_size']
+        fields = [
+            'id',
+            'original_name',
+            'file',
+            'comment',
+            'user',
+            'uploaded_at',
+            'file_size',
+            'last_downloaded'
+        ]
+        read_only_fields = ['user', 'uploaded_at', 'file_size']
 
     def create(self, validated_data):
         try:
@@ -41,6 +52,11 @@ class UserFileSerializer(serializers.ModelSerializer):
             return file_instance
         except Exception as e:
             raise serializers.ValidationError(str(e))
+    def update(self, instance, validated_data):
+        if 'file' in validated_data and validated_data['file'] is None:
+            validated_data.pop('file')
+        return super().update(instance, validated_data)
+    
         
       
 

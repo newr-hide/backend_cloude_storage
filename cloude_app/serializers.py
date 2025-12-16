@@ -6,6 +6,12 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.core.exceptions import ValidationError
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth import get_user_model
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.exceptions import TokenError
+import logging
+
+User = get_user_model()
+logger = logging.getLogger(__name__)
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -57,10 +63,6 @@ class UserFileSerializer(serializers.ModelSerializer):
             validated_data.pop('file')
         return super().update(instance, validated_data)
     
-        
-      
-
-User = get_user_model()
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     username_field = User.USERNAME_FIELD 
 
@@ -80,14 +82,13 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                 help_text='Введите ваш логин',
                 label='Логин'
             )
-
+    
     def validate(self, attrs):
         
         if self.username_field not in attrs:
             raise serializers.ValidationError({self.username_field: "поле обязательное"})
         if 'password' not in attrs:
             raise serializers.ValidationError({"password": "поле обязательное"})
-
 
         data = super().validate(attrs)
         
@@ -116,7 +117,44 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         token['email'] = user.email
         return token
     
-    
+class CustomTokenRefreshSerializer(serializers.Serializer):
+    refresh = serializers.CharField()
+
+    def validate(self, attrs):
+        logger.info("Начало процесса обновления токена")
+        
+        try:
+            refresh = RefreshToken(attrs['refresh'])
+            user_id = refresh['user_id']
+
+            try:
+                user = User.objects.get(id=user_id)
+            except User.DoesNotExist:
+                raise serializers.ValidationError({'detail': 'Пользователь не найден'})
+            data = {
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
+            }
+            
+            data['user'] = {
+                'id': user.id,
+                'login': user.login,
+                'email': user.email,
+                'is_admin': user.is_admin,
+                'is_active': user.is_active,
+            }
+
+            logger.info("Токен успешно обновлен")
+            return data
+        
+        except TokenError as e:
+            logger.error(f"Ошибка токена: {str(e)}")
+            raise serializers.ValidationError({'detail': str(e)})
+        
+        except Exception as e:
+            logger.error(f"Ошибка при обновлении токена: {str(e)}")
+            raise
+
     
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(
@@ -158,7 +196,6 @@ class RegisterSerializer(serializers.ModelSerializer):
         if User.objects.filter(email=value).exists():
             raise serializers.ValidationError("Пользователь с таким Еmail уже существует")
         return value
-    
 
     def create(self, validated_data):
         try:

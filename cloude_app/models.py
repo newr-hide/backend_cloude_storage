@@ -65,6 +65,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     @property
     def is_staff(self):
         return self.is_admin
+
+
     
 class UserFile(models.Model):
     user = models.ForeignKey(User, related_name='files', on_delete=models.CASCADE)

@@ -1,8 +1,8 @@
-
 import mimetypes
+from rest_framework_simplejwt.views import TokenViewBase
 from django.http import HttpResponse, StreamingHttpResponse
 from .models import User, UserFile, FileShareLink
-from .serializers import CustomTokenObtainPairSerializer, RegisterSerializer, UserSerializer, UserFileSerializer
+from .serializers import CustomTokenObtainPairSerializer, RegisterSerializer,CustomTokenRefreshSerializer, UserSerializer, UserFileSerializer
 from rest_framework import viewsets, status, generics, filters
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.permissions import AllowAny
@@ -30,7 +30,6 @@ class UserDetailView(generics.RetrieveAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     lookup_field = 'id'
-
 
 class UserFileViewSet(viewsets.ModelViewSet):
     queryset = UserFile.objects.all()
@@ -65,7 +64,6 @@ class UserFileViewSet(viewsets.ModelViewSet):
         return queryset
     
     def update(self, request, *args, **kwargs):
-
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
         
@@ -77,9 +75,6 @@ class UserFileViewSet(viewsets.ModelViewSet):
         self.perform_update(serializer)
         return Response(serializer.data)
     
-        
-        
-
 class AdminFileFilterView(generics.ListAPIView):
     serializer_class = UserFileSerializer
     permission_classes = [IsAdminUser]
@@ -91,14 +86,15 @@ class AdminFileFilterView(generics.ListAPIView):
         if user_id:
             return UserFile.objects.filter(user_id=user_id)
         return UserFile.objects.all()
-    
-    
-    
+        
 
 class MyTokenObtainPairView(TokenObtainPairView):
     permission_classes = [AllowAny]
     serializer_class = CustomTokenObtainPairSerializer
-  
+
+class CustomTokenRefreshView(TokenViewBase):
+    serializer_class = CustomTokenRefreshSerializer
+
 class DownloadFileView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 

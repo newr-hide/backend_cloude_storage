@@ -1,9 +1,9 @@
+
 import mimetypes
-from rest_framework_simplejwt.views import TokenViewBase
 from django.http import HttpResponse, StreamingHttpResponse
 from .models import User, UserFile, FileShareLink
-from .serializers import CustomTokenObtainPairSerializer, RegisterSerializer,CustomTokenRefreshSerializer, UserSerializer, UserFileSerializer
-from rest_framework import viewsets, status, generics, filters
+from .serializers import CustomTokenObtainPairSerializer, RegisterSerializer, UserSerializer, UserFileSerializer
+from rest_framework import viewsets, status, generics, filters, mixins
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.views import TokenObtainPairView
@@ -19,17 +19,31 @@ from django.utils import timezone
 from rest_framework.exceptions import APIException
 from .permissions import IsAdminUser, IsAdminUserOrOwner
 import logging
+from django.conf import settings
+from rest_framework_simplejwt.exceptions import TokenError
+
 
 logger = logging.getLogger(__name__)
+
 
 class UsersViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     
 class UserDetailView(generics.RetrieveAPIView):
+    permission_classes = [IsAdminUserOrOwner]
     queryset = User.objects.all()
     serializer_class = UserSerializer
     lookup_field = 'id'
+    def dispatch(self, request, *args, **kwargs):
+        token_header = request.META.get('HTTP_AUTHORIZATION')
+        # print(f'Token from header: {token_header}')
+
+        jwt_cookie = request.COOKIES.get('access_token')  
+        # print(f'JWT Token from Cookie: {jwt_cookie}')
+
+        return super().dispatch(request, *args, **kwargs)
+
 
 class UserFileViewSet(viewsets.ModelViewSet):
     queryset = UserFile.objects.all()
@@ -39,6 +53,17 @@ class UserFileViewSet(viewsets.ModelViewSet):
     filterset_fields = ['user', 'uploaded_at'] # фильтры
     search_fields = ['original_name', 'comment']
 
+    def create(self, request, *args, **kwargs):
+        # # Начало отладки
+        # print("=== Начало ===")
+        # print("Метод запроса:", request.method)
+        # print("Файл запроса:", request.FILES)
+        # print("Данные запроса:", request.data)
+        # print("Форма:", request.POST)
+        # print("=== Конец ===")
+
+        return super().create(request, *args, **kwargs)
+    
     def get_permissions(self):
         if self.action in ['list', 'retrieve', 'destroy']:
             return [IsAdminUser()]
@@ -75,6 +100,7 @@ class UserFileViewSet(viewsets.ModelViewSet):
         self.perform_update(serializer)
         return Response(serializer.data)
     
+    
 class AdminFileFilterView(generics.ListAPIView):
     serializer_class = UserFileSerializer
     permission_classes = [IsAdminUser]
@@ -87,13 +113,84 @@ class AdminFileFilterView(generics.ListAPIView):
             return UserFile.objects.filter(user_id=user_id)
         return UserFile.objects.all()
         
-
 class MyTokenObtainPairView(TokenObtainPairView):
-    permission_classes = [AllowAny]
     serializer_class = CustomTokenObtainPairSerializer
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        try:
+            serializer.is_valid(raise_exception=True)
+            validated_data = serializer.validated_data 
+            
+            response = Response(validated_data, status=status.HTTP_200_OK)
+            
+            response.set_cookie(
+                key="access_token",
+                value=validated_data["access"],
+                max_age=settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds(),
+                httponly=True,
+                samesite='None',
+                secure=True
+            )
+            
+            response.set_cookie(
+                key="refresh_token",
+                value=validated_data["refresh"],
+                max_age=settings.SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'].total_seconds(),
+                httponly=True,
+                samesite='None',
+                secure=True
+            )
+            
+            return response
+        
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-class CustomTokenRefreshView(TokenViewBase):
-    serializer_class = CustomTokenRefreshSerializer
+class RefreshTokenView(APIView):
+    authentication_classes = ()  
+    permission_classes = ()     
+
+    def post(self, request):
+        try:
+
+            refresh_token = request.COOKIES.get('refresh_token')
+            if not refresh_token:
+                return Response({'error': 'Refresh token not found'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            refresh = RefreshToken(refresh_token)
+            
+            user = User.objects.filter(id=refresh['user_id']).first()
+            if not user:
+                return Response({'error': 'User not found'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            access = str(refresh.access_token)
+            
+            response = Response({
+                'detail': 'Tokens refreshed successfully',
+                'access': access
+            }, status=status.HTTP_200_OK)
+            
+            response.set_cookie(
+                key='access_token',
+                value=access,
+                max_age=settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds(),
+                httponly=True,
+                samesite='None',
+                secure=True
+            )
+            
+            return response
+        
+        except TokenError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except User.DoesNotExist:
+            return Response({'error': 'User does not exist'}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({'error': 'Internal server error'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class DownloadFileView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -174,7 +271,7 @@ class CreateShareLinkView(APIView):
                 token=token,
                 expires_at=expires_at
             )
-            print(link)
+            # print(link)
             base_url = request.build_absolute_uri('/api/download-public/')
             share_url = f"{base_url}{link.token}"
             
@@ -211,21 +308,30 @@ class PublicDownloadView(APIView):
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
-class AdminUserViewSet(viewsets.GenericViewSet):
+class AdminUserViewSet(viewsets.GenericViewSet,
+                     mixins.ListModelMixin,
+                     mixins.DestroyModelMixin):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [IsAdminUser]
-    
+    lookup_field = 'id'
+
     def list(self, request):
         users = self.get_queryset()
         serializer = self.serializer_class(users, many=True)
         return Response(serializer.data)
-    
-    def destroy(self, request, pk=None):
-        user = self.get_object()
-        user.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
-    
+
+    def destroy(self, request, id=None):
+        print('Запуск')
+        try:
+            user = self.get_object()
+            print(f"Попытка удалить пользователя: {user.login}") 
+            user.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            print(f"Ошибка при удалении: {str(e)}") 
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
     def partial_update(self, request, pk=None):
         user = self.get_object()
         is_admin = request.data.get('is_admin', None)

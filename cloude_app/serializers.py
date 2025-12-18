@@ -24,6 +24,7 @@ class UserSerializer(serializers.ModelSerializer):
 
 class UserFileSerializer(serializers.ModelSerializer):
     file_size = serializers.SerializerMethodField()
+    
     def get_file_size(self, obj):
         try:
             return obj.file_size
@@ -34,6 +35,7 @@ class UserFileSerializer(serializers.ModelSerializer):
         format='%d-%m-%Y',
         read_only=True
     )
+    
     class Meta:
         model = UserFile
         fields = [
@@ -48,74 +50,62 @@ class UserFileSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['user', 'uploaded_at', 'file_size']
 
+
     def create(self, validated_data):
         try:
-            validated_data['user'] = self.context['request'].user
-            file_instance = super().create(validated_data)
-            file_instance.original_name = os.path.basename(file_instance.file.name)
-            file_instance.file_size = file_instance.file.size
-            file_instance.save()
-            return file_instance
+            file = validated_data.pop('file', None)
+            if not file:
+                raise serializers.ValidationError({'file': 'Файл обязателен'})
+            
+            instance = UserFile(
+                file=file,
+                original_name=os.path.basename(file.name),
+                file_size=file.size,
+                comment=validated_data.get('comment', ''),
+                user=self.context['request'].user
+            )
+            
+            instance.save()
+            return instance
         except Exception as e:
+            print(f"Ошибка при создании: {str(e)}")
             raise serializers.ValidationError(str(e))
+
     def update(self, instance, validated_data):
         if 'file' in validated_data and validated_data['file'] is None:
             validated_data.pop('file')
+        
+        if 'file' in validated_data:
+            file = validated_data.pop('file')
+            instance.original_name = os.path.basename(file.name)
+            instance.file = file
+            instance.file_size = file.size
+        
         return super().update(instance, validated_data)
     
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    username_field = User.USERNAME_FIELD 
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        if 'username' in self.fields:
-            self.fields.pop('username')
-            self.fields[self.username_field] = serializers.CharField(
-                required=True,
-                help_text='Введите ваш логин',
-                label='Логин'
-            )
-        else:
-            self.fields[self.username_field] = serializers.CharField(
-                required=True,
-                help_text='Введите ваш логин',
-                label='Логин'
-            )
-    
-    def validate(self, attrs):
-        
-        if self.username_field not in attrs:
-            raise serializers.ValidationError({self.username_field: "поле обязательное"})
-        if 'password' not in attrs:
-            raise serializers.ValidationError({"password": "поле обязательное"})
-
-        data = super().validate(attrs)
-        
-        try:
-            refresh = self.get_token(self.user)
-            data['refresh'] = str(refresh)
-            data['access'] = str(refresh.access_token)
-            
-            data['user'] = {
-                'id': self.user.id,
-                'login': getattr(self.user, 'login', None),
-                'email': getattr(self.user, 'email', None),
-                'is_admin': getattr(self.user, 'is_admin', None)
-            }
-            
-        except Exception as e:
-            raise serializers.ValidationError(f"Ошибка при получении токена: {str(e)}")
-        
-        return data
-
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
-        token['id'] = user.id
+        token['user_id'] = user.id
         token['login'] = user.login
         token['email'] = user.email
+        token['is_admin'] = user.is_admin
         return token
+
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        refresh = self.get_token(self.user)
+        data['refresh'] = str(refresh)
+        data['access'] = str(refresh.access_token)
+        data['user'] = {
+            'id': self.user.id,
+            'login': self.user.login,
+            'email': self.user.email,
+            'is_admin': self.user.is_admin
+        }
+        return data
+
     
 class CustomTokenRefreshSerializer(serializers.Serializer):
     refresh = serializers.CharField()

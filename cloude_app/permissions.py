@@ -1,20 +1,19 @@
-
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework import permissions
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
-class IsAdminUser(permissions.BasePermission):
+from cloude_app.jwt_cookie_auth import BaseJWTAuthentication
 
-        # Доступ только админам
+class IsAdminUser(BaseJWTAuthentication):
+    def has_permission(self, request, view):
+        user = self.authenticate_user(request)
+        return user and user.is_authenticated and user.is_admin
 
-    class IsAdminUser(permissions.BasePermission):
-        def has_permission(self, request, view):
-            return request.user.is_authenticated and request.user.is_admin
-        
-class IsAdminUserOrOwner(permissions.BasePermission):
-
-   # Разрешение для администраторов или владельца объекта
-
+class IsAdminUserOrOwner(BaseJWTAuthentication):
     def has_object_permission(self, request, view, obj):
+        user = self.authenticate_user(request)
+        if not user:
+            return False
+        return user.is_admin or obj.user == user
 
-        if request.user.is_admin:
-            return True
-        return obj.user == request.user
+          

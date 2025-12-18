@@ -56,6 +56,7 @@ AUTH_USER_MODEL = 'cloude_app.User'
 
 AUTHENTICATION_BACKENDS = [
     'django.contrib.auth.backends.ModelBackend',
+
 ]
 
 
@@ -79,6 +80,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'cloude_app.middleware.CookieToHeaderMiddleware',
 
     
 ]
@@ -86,8 +88,16 @@ CORS_ALLOW_CREDENTIALS = True #Для работы с куками
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",  # Порт React-приложения
 ]
-
-
+#Добавил для куки
+CORS_ALLOW_HEADERS = [
+    'authorization',
+    'content-type',
+    'x-csrftoken'
+]
+#Добавил для куки
+CORS_EXPOSE_HEADERS = [
+    'authorization'
+]
 
 ROOT_URLCONF = 'cloude_storage.urls'
 
@@ -175,7 +185,7 @@ LOGGING = {
 SIMPLE_JWT = {
     
     'USER_AUTHENTICATION_FIELD': 'login',
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=1),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": False,
@@ -214,4 +224,14 @@ SIMPLE_JWT = {
     "TOKEN_BLACKLIST_SERIALIZER": "rest_framework_simplejwt.serializers.TokenBlacklistSerializer",
     "SLIDING_TOKEN_OBTAIN_SERIALIZER": "rest_framework_simplejwt.serializers.TokenObtainSlidingSerializer",
     "SLIDING_TOKEN_REFRESH_SERIALIZER": "rest_framework_simplejwt.serializers.TokenRefreshSlidingSerializer",
+
+#Добавил для куки
+    'ACCESS_TOKEN_COOKIE': 'access_token',
+    'REFRESH_TOKEN_COOKIE': 'refresh_token',
+    'ACCESS_TOKEN_COOKIE_SECURE': False,  # только HTTPS
+    'ACCESS_TOKEN_COOKIE_HTTPONLY': True,  # HTTP-only
+    'REFRESH_TOKEN_COOKIE_SECURE': True,
+    'REFRESH_TOKEN_COOKIE_HTTPONLY': True,
+    'ACCESS_TOKEN_COOKIE_MAX_AGE': 1800,  # 1 час
+    'REFRESH_TOKEN_COOKIE_MAX_AGE': 86400,  # 1 день
 }

@@ -20,8 +20,6 @@ class UserSerializer(serializers.ModelSerializer):
         fields = ['id','login', 'email', 'is_active', 'is_admin', 'date_joined']
         read_only_fields = ['date_joined']
 
-
-
 class UserFileSerializer(serializers.ModelSerializer):
     file_size = serializers.SerializerMethodField()
     
@@ -50,7 +48,6 @@ class UserFileSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['user', 'uploaded_at', 'file_size']
 
-
     def create(self, validated_data):
         try:
             file = validated_data.pop('file', None)
@@ -71,18 +68,6 @@ class UserFileSerializer(serializers.ModelSerializer):
             print(f"Ошибка при создании: {str(e)}")
             raise serializers.ValidationError(str(e))
 
-    def update(self, instance, validated_data):
-        if 'file' in validated_data and validated_data['file'] is None:
-            validated_data.pop('file')
-        
-        if 'file' in validated_data:
-            file = validated_data.pop('file')
-            instance.original_name = os.path.basename(file.name)
-            instance.file = file
-            instance.file_size = file.size
-        
-        return super().update(instance, validated_data)
-    
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     @classmethod
     def get_token(cls, user):

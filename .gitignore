@@ -8,3 +8,4 @@
 bot_keys.py
 .env
 /files
+app.log

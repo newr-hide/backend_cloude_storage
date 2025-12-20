@@ -1,6 +1,7 @@
-
 import mimetypes
 from django.http import HttpResponse, StreamingHttpResponse
+
+from cloude_app.file_services import FileService
 from .models import User, UserFile, FileShareLink
 from .serializers import CustomTokenObtainPairSerializer, RegisterSerializer, UserSerializer, UserFileSerializer
 from rest_framework import viewsets, status, generics, filters, mixins
@@ -14,8 +15,6 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
 import os
-import uuid
-from django.utils import timezone
 from rest_framework.exceptions import APIException
 from .permissions import IsAdminUser, IsAdminUserOrOwner
 import logging
@@ -46,59 +45,85 @@ class UserDetailView(generics.RetrieveAPIView):
 
 
 class UserFileViewSet(viewsets.ModelViewSet):
-    queryset = UserFile.objects.all()
     serializer_class = UserFileSerializer
-    parser_classes = [MultiPartParser, FormParser, JSONParser]  # Парсеры для файлов
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
-    filterset_fields = ['user', 'uploaded_at'] # фильтры
+    filterset_fields = ['user', 'uploaded_at']
     search_fields = ['original_name', 'comment']
 
-    def create(self, request, *args, **kwargs):
-        # # Начало отладки
-        # print("=== Начало ===")
-        # print("Метод запроса:", request.method)
-        # print("Файл запроса:", request.FILES)
-        # print("Данные запроса:", request.data)
-        # print("Форма:", request.POST)
-        # print("=== Конец ===")
-
-        return super().create(request, *args, **kwargs)
-    
     def get_permissions(self):
         if self.action in ['list', 'retrieve', 'destroy']:
             return [IsAdminUser()]
         elif self.action in ['update', 'partial_update']:
             return [IsAdminUserOrOwner()]
         return [permissions.IsAuthenticated()]
-        
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        file_service = FileService(user=self.request.user, request=self.request)
+        return file_service.get_queryset()
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
         
-        # Фильтрация по пользователю для админов
-        user_id = self.request.query_params.get('user_id')
-        if self.request.user.is_admin and user_id:
-            return queryset.filter(user_id=user_id)
+        file_service = FileService(user=self.request.user, request=self.request)
+        file_service.create_file(serializer.validated_data)
         
-        # Для пользователей только свои файлы
-        if not self.request.user.is_admin:
-            return queryset.filter(user=self.request.user)
-        
-        return queryset
-    
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
     def update(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', False)
-        instance = self.get_object()
+        try:
+            instance = self.get_object()
+            serializer = self.get_serializer(
+                instance, 
+                data=request.data, 
+                partial=True
+            )
+            serializer.is_valid(raise_exception=True)
+            
+            file_service = FileService(request.user)
+            updated_instance = file_service.update_file(
+                instance, 
+                serializer.validated_data
+            )
+            
+            return Response(
+                self.get_serializer(updated_instance).data
+            )
         
-        if not request.user.is_admin and instance.user != request.user:
+        except PermissionError:
             return Response(status=status.HTTP_403_FORBIDDEN)
         
-        serializer = self.get_serializer(instance, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
-        return Response(serializer.data)
+        except APIException as e:
+            return Response(
+                {'error': str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Произошла ошибка: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+    def retrieve(self, request, *args, **kwargs):
+        try:
+            instance = self.get_object()
+            file_service = FileService(request.user)
+            updated_instance = file_service.update_last_downloaded(instance)
+            serializer = self.get_serializer(updated_instance)
+            return Response(serializer.data)
+        except Exception as e:
+            return Response(
+                {'error': str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        file_service = FileService(user=self.request.user, request=self.request)
+        file_service.delete_file(instance)
+        return Response(status=status.HTTP_204_NO_CONTENT)
     
     
 class AdminFileFilterView(generics.ListAPIView):
@@ -197,14 +222,11 @@ class DownloadFileView(APIView):
 
     def get(self, request, pk):
         try:
-            file_obj = get_object_or_404(UserFile, pk=pk)
-            file_path = file_obj.file.path
-            file_obj.download()
+            file_service = FileService(user=request.user)
+            file_obj = file_service.get_file_by_id(pk)
+            updated_file = file_service.update_last_downloaded(file_obj)
+            file_path, filename = file_service.download_file(file_obj)
             
-            if not os.path.exists(file_path):
-                return Response({'error': 'Файл не найден'}, status=404)
-            
-            filename = os.path.basename(file_obj.file.name)
             content_type = mimetypes.guess_type(file_path)[0] or 'application/octet-stream'
             
             with open(file_path, 'rb') as fh:
@@ -212,8 +234,8 @@ class DownloadFileView(APIView):
                 response['Content-Disposition'] = f'attachment; filename="{filename}"'
                 return response
             
-        except FileNotFoundError:
-            return Response({'error': 'Файл не найден'}, status=404)
+        except FileNotFoundError as e:
+            return Response({'error': str(e)}, status=404)
         except Exception as e:
             return Response({'error': str(e)}, status=500)
     
@@ -222,13 +244,12 @@ class DeleteFileView(APIView):
 
     def delete(self, request, pk):
         try:
-            file_obj = get_object_or_404(UserFile, pk=pk, user=request.user)
-            file_obj.delete()
-            
+            file_service = FileService(user=request.user)
+            file_obj = file_service.get_file_by_id(pk)
+            file_service.delete_file(file_obj)
             return Response({'message': 'Файл удален'}, status=status.HTTP_204_NO_CONTENT)
         except Exception as e:
-            raise APIException(f"Ошибка при удалении файла: {str(e)}", code=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class RegisterViewSet(viewsets.GenericViewSet):
     permission_classes = [AllowAny]
@@ -261,24 +282,15 @@ class CreateShareLinkView(APIView):
         file_id = request.data.get('file-id')
         
         try:
-            file = UserFile.objects.get(id=file_id, user=request.user)
+            file_service = FileService(user=request.user)
+            file_obj = file_service.get_file_by_id(file_id)
+            link = file_service.create_share_link(file_obj)
             
-            token = uuid.uuid4()
-            expires_at = timezone.now() + timezone.timedelta(days=7)  # Срок действия
-            
-            link = FileShareLink.objects.create(
-                file=file,
-                token=token,
-                expires_at=expires_at
-            )
-            # print(link)
             base_url = request.build_absolute_uri('/api/download-public/')
             share_url = f"{base_url}{link.token}"
             
             return Response({'share_url': share_url}, status=status.HTTP_201_CREATED)
         
-        except UserFile.DoesNotExist:
-            return Response({'error': 'Файл не найден'}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -321,27 +333,35 @@ class AdminUserViewSet(viewsets.GenericViewSet,
         serializer = self.serializer_class(users, many=True)
         return Response(serializer.data)
 
-    def destroy(self, request, id=None):
-        print('Запуск')
+    def destroy(self, request, id):
+        # print('Запуск')
         try:
-            user = self.get_object()
-            print(f"Попытка удалить пользователя: {user.login}") 
+            user = self.get_object() 
             user.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
         except Exception as e:
             print(f"Ошибка при удалении: {str(e)}") 
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    def partial_update(self, request, pk=None):
-        user = self.get_object()
-        is_admin = request.data.get('is_admin', None)
+    def partial_update(self, request, id):
+        print('Запуск partial_update') 
+        try:
+            print('Запуск partial_update')  
+            user = self.get_object()
+            print(f"Получен пользователь: {user.login}")
+            
+            is_admin = request.data.get('is_admin', None)
+            
+            if is_admin is not None:
+                user.is_admin = is_admin
+                user.save()
+                return Response(self.serializer_class(user).data, status=status.HTTP_200_OK)
+            
+            return Response({'error': 'Параметр is_admin не передан'}, status=status.HTTP_400_BAD_REQUEST)
         
-        if is_admin is not None:
-            user.is_admin = is_admin
-            user.save()
-            return Response(self.serializer_class(user).data)
-        
-        return Response(status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            print(f"Ошибка при обновлении: {str(e)}")
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class ShowFileView(APIView):

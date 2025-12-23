@@ -9,15 +9,27 @@ from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
 import logging
+from django.db.models import Sum
+from django.core.validators import validate_email
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
 
 
 class UserSerializer(serializers.ModelSerializer):
+    total_files = serializers.SerializerMethodField()
+    total_size = serializers.SerializerMethodField()
+    
+    def get_total_files(self, obj):
+        return UserFile.objects.filter(user=obj).count()
+    
+    def get_total_size(self, obj):
+        files = UserFile.objects.filter(user=obj)
+        total_size = files.aggregate(total=Sum('file_size'))['total'] or 0
+        return total_size
     class Meta:
         model = User
-        fields = ['id','login', 'email', 'is_active', 'is_admin', 'date_joined']
+        fields = ['id','login', 'email', 'is_active', 'is_admin', 'date_joined','total_files', 'total_size']
         read_only_fields = ['date_joined']
 
 class UserFileSerializer(serializers.ModelSerializer):
@@ -65,6 +77,7 @@ class UserFileSerializer(serializers.ModelSerializer):
             instance.save()
             return instance
         except Exception as e:
+            logger.error(f"Ошибка при загрузке файла: {str(e)}", exc_info=True)
             print(f"Ошибка при создании: {str(e)}")
             raise serializers.ValidationError(str(e))
 
@@ -153,6 +166,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         if len(value) < 4 or len(value) > 20:
             raise serializers.ValidationError("Длина логина должна быть от 4 до 20 символов")
         return value
+    
     def validate_password(self, value):
         try:
             validate_password(value)
@@ -167,9 +181,16 @@ class RegisterSerializer(serializers.ModelSerializer):
         if not re.search(r'[!@#$%^&*(),.?":{}|<>]', value):
             raise serializers.ValidationError("Пароль должен содержать специальный символ")
         return value
+    
     def validate_email(self, value):
+        try:
+            validate_email(value)
+        except ValidationError:
+            raise serializers.ValidationError("Некорректный формат email")
+
         if User.objects.filter(email=value).exists():
-            raise serializers.ValidationError("Пользователь с таким Еmail уже существует")
+            raise serializers.ValidationError("Пользователь с таким email уже существует")
+            
         return value
 
     def create(self, validated_data):

@@ -1,6 +1,5 @@
 import mimetypes
 from django.http import HttpResponse, StreamingHttpResponse
-
 from cloude_app.file_services import FileService
 from .models import User, UserFile, FileShareLink
 from .serializers import CustomTokenObtainPairSerializer, RegisterSerializer, UserSerializer, UserFileSerializer
@@ -20,6 +19,7 @@ from .permissions import IsAdminUser, IsAdminUserOrOwner
 import logging
 from django.conf import settings
 from rest_framework_simplejwt.exceptions import TokenError
+
 
 
 logger = logging.getLogger(__name__)
@@ -45,6 +45,7 @@ class UserDetailView(generics.RetrieveAPIView):
 
 
 class UserFileViewSet(viewsets.ModelViewSet):
+    queryset = UserFile.objects.all()
     serializer_class = UserFileSerializer
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
@@ -52,16 +53,30 @@ class UserFileViewSet(viewsets.ModelViewSet):
     search_fields = ['original_name', 'comment']
 
     def get_permissions(self):
-        if self.action in ['list', 'retrieve', 'destroy']:
+        # logger.info(f"Checking permissions for action: {self.action}")
+        # logger.info(f"Current user: {self.request.user}")
+        # logger.info(f"Request user ID: {self.request.user.id}")
+        # logger.info(f"Requested file ID: {self.kwargs.get('pk')}")
+        if self.action in [ 'destroy']:
             return [IsAdminUser()]
-        elif self.action in ['update', 'partial_update']:
+        elif self.action in [ 'retrieve', 'update', 'partial_update']:
             return [IsAdminUserOrOwner()]
         return [permissions.IsAuthenticated()]
 
     def get_queryset(self):
         file_service = FileService(user=self.request.user, request=self.request)
-        return file_service.get_queryset()
-
+        queryset = file_service.get_queryset()
+       
+        if self.action == 'list' and not self.request.user.is_superuser:
+            return queryset.filter(user=self.request.user)
+        
+        return queryset
+    
+    def list(self, request, *args, **kwargs):
+        if not request.user.is_superuser:
+            self.queryset = self.queryset.filter(user=request.user)
+        return super().list(request, *args, **kwargs)
+    
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -266,7 +281,7 @@ class RegisterViewSet(viewsets.GenericViewSet):
             'access': str(refresh.access_token)
         }
         
-        return Response({
+        response = Response({
             'user': {
                 'id': user.id,
                 'login': user.login,
@@ -274,6 +289,9 @@ class RegisterViewSet(viewsets.GenericViewSet):
             },
             'tokens': tokens
         }, status=status.HTTP_201_CREATED)
+        response.set_cookie('access_token', tokens['access'], httponly=True, samesite='None', secure=True)
+        response.set_cookie('refresh_token', tokens['refresh'], httponly=True, samesite='None', secure=True)
+        return response
     
 class CreateShareLinkView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -411,5 +429,27 @@ class ShowFileView(APIView):
                 response['Content-Length'] = file_obj.file_size
                 return response
             
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class LogoutView(APIView):
+    authentication_classes = []  
+    permission_classes = []
+
+    def post(self, request, *args, **kwargs):
+        try:
+            access_token = request.COOKIES.get('access_token')
+            refresh_token = request.COOKIES.get('refresh_token')
+            print(access_token)
+            if not access_token or not refresh_token:
+                return Response({'detail': 'Токен не найден'}, status=status.HTTP_400_BAD_REQUEST)
+
+            response = Response({'detail': 'Выход выполнен успешно'}, status=status.HTTP_200_OK)
+            response.delete_cookie('access_token', samesite='None')
+            response.delete_cookie('refresh_token', samesite='None')
+            
+            return response
+
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

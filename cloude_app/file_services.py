@@ -3,9 +3,8 @@ import uuid
 from cloude_app.models import FileShareLink, UserFile
 from django.utils import timezone
 from rest_framework.exceptions import APIException
-from rest_framework.response import Response
-from rest_framework import status
-
+import logging
+logger = logging.getLogger(__name__)
 
 class BaseService:
     def __init__(self, user=None):
@@ -63,7 +62,8 @@ class FileService(BaseService):
         try:
             return UserFile.objects.create(user=self.user, **validated_data)
         except Exception as e:
-            raise APIException(f"Ошибка при создании файла: {str(e)}")
+            logger.error(f"Ошибка при создании файла: {str(e)}", exc_info=True)
+            raise 
         
     def update_file(self, instance, validated_data):
         try:

@@ -1,7 +1,8 @@
-import datetime
+
 import os
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin, Group, Permission
+from django.forms import ValidationError
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 import uuid
@@ -28,7 +29,8 @@ class UserManager(BaseUserManager):
             password=password,
         )
         user.is_admin = True
-        user.is_active = True  
+        user.is_active = True
+        user.is_superuser = True  
         user.save(using=self._db)
         return user
     
@@ -67,7 +69,6 @@ class User(AbstractBaseUser, PermissionsMixin):
         return self.is_admin
 
 
-    
 class UserFile(models.Model):
     user = models.ForeignKey(User, related_name='files', on_delete=models.CASCADE)
     file = models.FileField(upload_to='user_files/')
@@ -89,7 +90,7 @@ class UserFile(models.Model):
         super().save(*args, **kwargs)
 
     def download(self):
-        self.last_downloaded = datetime.datetime.now()
+        self.last_downloaded = timezone.now()
         self.save()
 
     def delete(self, *args, **kwargs):
@@ -109,6 +110,13 @@ class FileShareLink(models.Model):
     token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     expires_at = models.DateTimeField()
     created_at = models.DateTimeField(auto_now_add=True)
+    def clean(self):
+        if self.expires_at <= timezone.now():
+            raise ValidationError('Дата истечения не может быть в прошлом')
     
+    def save(self, *args, **kwargs):
+        self.full_clean() 
+        super().save(*args, **kwargs)
+
     def is_expired(self):
         return timezone.now() > self.expires_at

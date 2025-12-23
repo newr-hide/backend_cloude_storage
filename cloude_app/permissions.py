@@ -14,6 +14,7 @@ class IsAdminUserOrOwner(BaseJWTAuthentication):
         user = self.authenticate_user(request)
         if not user:
             return False
-        return user.is_admin or obj.user == user
+
+        return user.is_admin or obj == user
 
           

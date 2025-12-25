@@ -1,6 +1,7 @@
 import mimetypes
 from django.http import HttpResponse, StreamingHttpResponse
 from cloude_app.file_services import FileService
+from cloude_app.file_utils import FileSystemUtils
 from .models import User, UserFile, FileShareLink
 from .serializers import CustomTokenObtainPairSerializer, RegisterSerializer, UserSerializer, UserFileSerializer
 from rest_framework import viewsets, status, generics, filters, mixins
@@ -15,7 +16,7 @@ from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
 import os
 from rest_framework.exceptions import APIException
-from .permissions import IsAdminUser, IsAdminUserOrOwner
+from .permissions import CanEditFileContent, IsAdminUser, IsAdminUserOrOwner
 import logging
 from django.conf import settings
 from rest_framework_simplejwt.exceptions import TokenError
@@ -59,8 +60,10 @@ class UserFileViewSet(viewsets.ModelViewSet):
         # logger.info(f"Requested file ID: {self.kwargs.get('pk')}")
         if self.action in [ 'destroy']:
             return [IsAdminUser()]
-        elif self.action in [ 'retrieve', 'update', 'partial_update']:
+        elif self.action in [ 'retrieve']:
             return [IsAdminUserOrOwner()]
+        elif self.action in [ 'update', 'partial_update']:
+            return [ CanEditFileContent()]
         return [permissions.IsAuthenticated()]
 
     def get_queryset(self):
@@ -96,25 +99,23 @@ class UserFileViewSet(viewsets.ModelViewSet):
             )
             serializer.is_valid(raise_exception=True)
             
-            file_service = FileService(request.user)
+            file_service = FileService(request.user, request)
             updated_instance = file_service.update_file(
                 instance, 
                 serializer.validated_data
             )
             
             return Response(
-                self.get_serializer(updated_instance).data
+                self.get_serializer(updated_instance).data,
+                status=status.HTTP_200_OK
             )
-        
-        except PermissionError:
-            return Response(status=status.HTTP_403_FORBIDDEN)
         
         except APIException as e:
             return Response(
                 {'error': str(e)}, 
-                status=status.HTTP_400_BAD_REQUEST
+                status=e.status_code
             )
-            
+        
         except Exception as e:
             return Response(
                 {'error': f'Произошла ошибка: {str(e)}'}, 
@@ -236,12 +237,15 @@ class DownloadFileView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, pk):
+        
         try:
-            file_service = FileService(user=request.user)
-            file_obj = file_service.get_file_by_id(pk)
+            file_utils = FileSystemUtils(user=request.user, request=request)
+            file_service = FileService(user=request.user, request=request)
+
+            file_obj = file_utils.get_file_by_id(pk)
             updated_file = file_service.update_last_downloaded(file_obj)
-            file_path, filename = file_service.download_file(file_obj)
-            
+            file_path, filename = file_utils.download_file(file_obj)
+            print(filename)
             content_type = mimetypes.guess_type(file_path)[0] or 'application/octet-stream'
             
             with open(file_path, 'rb') as fh:

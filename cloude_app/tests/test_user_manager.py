@@ -26,3 +26,22 @@ class UserManagerTestCase(TestCase):
         self.assertTrue(superuser.is_admin)
         self.assertTrue(superuser.is_superuser)
         self.assertTrue(superuser.is_active)
+
+
+class TestUserManagerEdgeCases(TestCase):
+    def test_create_user_with_empty_login(self):
+        with self.assertRaises(ValueError):
+            User.objects.create_user(
+                login='',
+                email='test@example.com',
+                password='password123'
+            )
+            
+    def test_create_user_with_empty_email(self):
+        with self.assertRaises(ValueError):
+            User.objects.create_user(
+                login='testuser',
+                email='',
+                password='password123'
+            )
+            

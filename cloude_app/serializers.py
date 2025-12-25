@@ -27,6 +27,22 @@ class UserSerializer(serializers.ModelSerializer):
         files = UserFile.objects.filter(user=obj)
         total_size = files.aggregate(total=Sum('file_size'))['total'] or 0
         return total_size
+    
+    def get_fields(self):
+        fields = super().get_fields()
+        
+        try:
+            request = self.context.get('request')
+            if request and request.user.is_authenticated:
+                if not request.user.is_admin: 
+                    fields.pop('is_active', None)
+                    fields.pop('is_admin', None)
+            else:
+                logger.warning("Запрос без аутентификации или контекста")
+        except Exception as e:
+            logger.error(f"Ошибка при проверке прав: {str(e)}")
+        
+        return fields
     class Meta:
         model = User
         fields = ['id','login', 'email', 'is_active', 'is_admin', 'date_joined','total_files', 'total_size']

@@ -5,6 +5,7 @@ from django.utils import timezone
 from rest_framework.exceptions import APIException
 import logging
 logger = logging.getLogger(__name__)
+from rest_framework import status
 
 class BaseService:
     def __init__(self, user=None):
@@ -48,15 +49,6 @@ class FileService(BaseService):
             )
         except Exception as e:
             raise APIException(f"Ошибка при создании ссылки: {str(e)}")
-    
-    def download_file(self, file_obj):
-        try:
-            file_path = file_obj.file.path
-            if not os.path.exists(file_path):
-                raise FileNotFoundError("Файл не найден")
-            return file_path, file_obj.original_name
-        except Exception as e:
-            raise APIException(f"Ошибка при загрузке файла: {str(e)}")
         
     def create_file(self, validated_data):
         try:
@@ -65,42 +57,39 @@ class FileService(BaseService):
             logger.error(f"Ошибка при создании файла: {str(e)}", exc_info=True)
             raise 
         
+    def _clean_data(self, validated_data):
+        allowed_fields = ['original_name', 'comment']
+        return {k: v for k, v in validated_data.items() if k in allowed_fields}
+
     def update_file(self, instance, validated_data):
         try:
-            self._check_permissions(instance)
             cleaned_data = self._clean_data(validated_data)
-            
+            if not cleaned_data:
+                raise APIException("Нет данных для обновления", code=status.HTTP_400_BAD_REQUEST)
+
             for attr, value in cleaned_data.items():
                 setattr(instance, attr, value)
-            
+
             instance.save()
             return instance
+
+        except APIException as e:
+            raise e
+
         except Exception as e:
-            raise APIException(f"Ошибка при обновлении файла: {str(e)}", code=500)
+            raise APIException(
+                detail=f"Ошибка при обновлении файла: {str(e)}",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     def update_last_downloaded(self, instance):
         try:
-            self._check_permissions(instance)
             instance.last_downloaded = timezone.now()
             instance.save()
             return instance
         except Exception as e:
-            raise APIException(f"Ошибка при обновлении даты скачивания: {str(e)}", code=500)
+            raise APIException(f"Ошибка при обновлении даты скачивания: {str(e)}", code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    def _check_permissions(self, instance):
-        if not self.user.is_admin and instance.user != self.user:
-            raise PermissionError("Доступ запрещен")
 
-    def _clean_data(self, data):
-        allowed_fields = ['original_name', 'comment']
-        cleaned_data = {
-            attr: value 
-            for attr, value in data.items() 
-            if attr in allowed_fields
-        }
-        
-        if 'file' in cleaned_data:
-            if cleaned_data['file'] is None or not cleaned_data['file']:
-                cleaned_data.pop('file')
-        
-        return cleaned_data
+
+

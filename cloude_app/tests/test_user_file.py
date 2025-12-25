@@ -33,7 +33,7 @@ class UserFileTestCase(TestCase):
         )
         
         self.assertEqual(file.original_name, 'test.txt')
-        self.assertEqual(file.file_size, 12)  # Длина строки 'Test content'
+        self.assertEqual(file.file_size, 12)  
 
     def test_download_method(self):
         file = UserFile.objects.create(

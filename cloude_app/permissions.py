@@ -17,4 +17,14 @@ class IsAdminUserOrOwner(BaseJWTAuthentication):
 
         return user.is_admin or obj == user
 
-          
+class CanEditFileContent(BaseJWTAuthentication):
+    def has_permission(self, request, view):
+        user = self.authenticate_user(request)
+        return user and user.is_authenticated
+
+    def has_object_permission(self, request, view, obj):
+        user = self.authenticate_user(request)
+        if not user:
+            return False
+
+        return True

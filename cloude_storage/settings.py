@@ -99,6 +99,10 @@ CORS_EXPOSE_HEADERS = [
     'authorization'
 ]
 
+CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='', cast=lambda v: [s.strip() for s in v.split(',')])
+CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='', cast=lambda v: [s.strip() for s in v.split(',')])
+
+
 ROOT_URLCONF = 'cloude_storage.urls'
 
 TEMPLATES = [

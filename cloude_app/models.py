@@ -1,4 +1,3 @@
-
 import os
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin, Group, Permission
@@ -68,10 +67,14 @@ class User(AbstractBaseUser, PermissionsMixin):
     def is_staff(self):
         return self.is_admin
 
+def generate_unique_filename(instance, filename):
+    ext = os.path.splitext(filename)[1]  # Расширение файла
+    unique_filename = f"{uuid.uuid4()}{ext}"  # Генерируем имя
+    return f"uploads/{unique_filename}"  # Возвращаем
 
 class UserFile(models.Model):
     user = models.ForeignKey(User, related_name='files', on_delete=models.CASCADE)
-    file = models.FileField(upload_to='user_files/')
+    file = models.FileField(upload_to=generate_unique_filename)
     comment = models.TextField(verbose_name="Комментарий", blank=True, default='')
     uploaded_at = models.DateTimeField(auto_now_add=True)
 

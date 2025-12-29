@@ -3,6 +3,7 @@ from rest_framework import permissions
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
 from cloude_app.jwt_cookie_auth import BaseJWTAuthentication
+from cloude_app.models import User, UserFile
 
 class IsAdminUser(BaseJWTAuthentication):
     def has_permission(self, request, view):
@@ -14,8 +15,14 @@ class IsAdminUserOrOwner(BaseJWTAuthentication):
         user = self.authenticate_user(request)
         if not user:
             return False
-
-        return user.is_admin or obj == user
+        # print(user)
+        if isinstance(obj, UserFile):
+            # Для файлов проверяем владельца
+            return user.is_admin or obj.user == user
+        elif isinstance(obj, User):
+            # Для пользователей проверяем совпадение
+            return user.is_admin or obj == user
+        return False
 
 class CanEditFileContent(BaseJWTAuthentication):
     def has_permission(self, request, view):

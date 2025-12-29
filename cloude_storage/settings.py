@@ -85,9 +85,7 @@ MIDDLEWARE = [
     
 ]
 CORS_ALLOW_CREDENTIALS = True #Для работы с куками
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",  # Порт React-приложения
-]
+
 #Добавил для куки
 CORS_ALLOW_HEADERS = [
     'authorization',
@@ -264,7 +262,7 @@ SIMPLE_JWT = {
 #Добавил для куки
     'ACCESS_TOKEN_COOKIE': 'access_token',
     'REFRESH_TOKEN_COOKIE': 'refresh_token',
-    'ACCESS_TOKEN_COOKIE_SECURE': False,  # только HTTPS
+    'ACCESS_TOKEN_COOKIE_SECURE': config('ACCESS_TOKEN_COOKIE_SECURE', cast=bool, default=True),  # только HTTPS
     'ACCESS_TOKEN_COOKIE_HTTPONLY': True,  # HTTP-only
     'REFRESH_TOKEN_COOKIE_SECURE': True,
     'REFRESH_TOKEN_COOKIE_HTTPONLY': True,

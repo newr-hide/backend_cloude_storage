@@ -20,7 +20,7 @@ from .permissions import CanEditFileContent, IsAdminUser, IsAdminUserOrOwner
 import logging
 from django.conf import settings
 from rest_framework_simplejwt.exceptions import TokenError
-
+from urllib.parse import quote
 
 
 logger = logging.getLogger(__name__)
@@ -125,6 +125,8 @@ class UserFileViewSet(viewsets.ModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         try:
             instance = self.get_object()
+            logger.info(f"Получен объект: {instance}")
+            logger.info(f"Тип объекта: {type(instance)}")
             file_service = FileService(request.user)
             updated_instance = file_service.update_last_downloaded(instance)
             serializer = self.get_serializer(updated_instance)
@@ -328,13 +330,15 @@ class PublicDownloadView(APIView):
                 return Response({'error': 'Срок действия ссылки истёк'}, status=status.HTTP_400_BAD_REQUEST)
             
             file_path = link.file.file.path
-            filename = os.path.basename(link.file.file.name)
-            
+            # print(link.file)
+            file_obj = link.file
+            filename = file_obj.original_name
+            quoted_filename = quote(filename.encode('utf-8'), safe='')
             content_type = mimetypes.guess_type(file_path)[0] or 'application/octet-stream'
             
             with open(file_path, 'rb') as fh:
                 response = HttpResponse(fh.read(), content_type=content_type)
-                response['Content-Disposition'] = f'attachment; filename="{filename}"'
+                response['Content-Disposition'] = f'attachment; filename="{quoted_filename}"'
                 return response
             
         except FileShareLink.DoesNotExist:

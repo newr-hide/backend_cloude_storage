@@ -119,7 +119,10 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'cloude_storage.wsgi.application'
-
+# Для сертификата
+SECURE_SSL_REDIRECT = True
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
@@ -199,7 +202,7 @@ LOGGING = {
         'file': {
             'level': 'DEBUG',
             'class': 'logging.FileHandler', # В файл
-            'filename': os.path.join(BASE_DIR, 'app.log'),
+            'filename': os.path.join(BASE_DIR, 'logs', 'app.log'),
             'formatter': 'verbose', 
         },
     },

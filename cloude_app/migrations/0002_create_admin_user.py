@@ -7,9 +7,9 @@ from django.contrib.auth.hashers import make_password
 def create_superuser(apps, schema_editor):
     User = apps.get_model('cloude_app', 'User')
     
-    login = os.getenv('ADMIN_LOGIN', '')
-    email = os.getenv('ADMIN_EMAIL', '')
-    password = os.getenv('ADMIN_PASSWORD', '')
+    login = os.getenv('ADMIN_LOGIN', 'admin')
+    email = os.getenv('ADMIN_EMAIL', 'admin@example.ru')
+    password = os.getenv('ADMIN_PASSWORD', 'Admin123!')
 
     if not User.objects.filter(is_superuser=True).exists():
         user = User(
@@ -22,6 +22,7 @@ def create_superuser(apps, schema_editor):
         )
        
         user.save()
+        print(f"Создан суперпользователь: {login}")
 
 class Migration(migrations.Migration):
     dependencies = [

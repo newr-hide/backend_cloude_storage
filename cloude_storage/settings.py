@@ -120,9 +120,9 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'cloude_storage.wsgi.application'
 # Для сертификата
-SECURE_SSL_REDIRECT = True
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
+SECURE_SSL_REDIRECT = False
+SESSION_COOKIE_SECURE = False
+CSRF_COOKIE_SECURE = False
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
@@ -169,8 +169,9 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, 'static'),  # Директория для разработки
+    os.path.join(BASE_DIR, 'static'),  # Папка со сборкой фронтенда
 ]
+SPA_INDEX = os.path.join(STATIC_ROOT, 'index.html') # Для SPA
 STATICFILES_FINDERS = [
     'django.contrib.staticfiles.finders.FileSystemFinder',
     'django.contrib.staticfiles.finders.AppDirectoriesFinder',

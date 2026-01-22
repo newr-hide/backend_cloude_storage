@@ -1,25 +1,18 @@
 server {
     listen 80;
-    server_name ВАШ АЙПИ ИЛИ ДОМЕН;
-
-    return 301 https://$server_name$request_uri;
-}
-
-server {
-    listen 443 ssl;
-    server_name ВАШ АЙПИ;
-
-    ssl_certificate /etc/ssl/private/django.crt;
-    ssl_certificate_key /etc/ssl/private/django.key;
-
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers HIGH:!aNULL:!MD5:!kEDH;
-
-    ssl_session_tickets off;
-    ssl_stapling on;
-    ssl_stapling_verify on;
-    ssl_dhparam /etc/ssl/certs/dhparam.pem;
-
+    server_name ваш_айпи;
+    
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # Для работы с куками между поддоменами/путями
+        proxy_cookie_path / "/; secure; HttpOnly; SameSite=None";
+    }
+    
     location / {
         proxy_pass http://127.0.0.1:5173;
         proxy_http_version 1.1;
@@ -27,19 +20,8 @@ server {
         proxy_set_header Connection 'upgrade';
         proxy_set_header Host $host;
         proxy_cache_bypass $http_upgrade;
-    }
-
-    location /api/ {
-        include proxy_params;
-        proxy_pass http://unix:/home/artem/cloude_storage/backend_cloude_storage/cloude_storage/project.sock;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-
-        add_header 'Access-Control-Allow-Origin' 'https://89.111.174.123:5173';
-        add_header 'Access-Control-Allow-Credentials' 'true';
-        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS';
-        add_header 'Access-Control-Allow-Headers' 'DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Content-Range,Range';
+        
+        # Для SPA
+        try_files $uri $uri/ /index.html;
     }
 }

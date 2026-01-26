@@ -88,7 +88,9 @@ python manage.py runserver
     Подтверждаем что это известный нам адрес и вводим пароль
     Создаем нового пользователя чтобы не работать под  root пользователем
     adduser имя_пользователя c маленькой буквы
+
     Далее вводим команду   usermod имя_пользователя -aG sudo добавляя пользователя в группу суперпользователей далее команда logout
+
     Переключаемся к серверу на созданного пользователя
     После входа обновляем все индексы пакетов командой
     sudo apt update
@@ -96,23 +98,26 @@ python manage.py runserver
     sudo apt upgrade
     Далее устанавливаем все необходимое ПО командой
     sudo apt install python3-venv pip curl postgresql nginx
-    Запускаем nginx командой
-    sudo systemctl start nginx
-    Сразу проверяем статус работы nginx командой
-    sudo systemctl status nginx
+
     Создаем папку для проекта командой
-    mkdir название папки
+    sudo mkdir project (если меняете название папки меняйте во всех настройках)
+    sudo chown -R имя_пользователя:имя_пользователя /название папки
     Заходим в папку
     cd название папки
     Далее копируем ссылку на репозоторий 
-    git clone https://github.com/newr-hide/frontend_cloude_storage.git
+     git clone https://github.com/newr-hide/frontend_cloude_storage.git
     далее
-    git clone https://github.com/newr-hide/backend_cloude_storage.git
+     git clone https://github.com/newr-hide/backend_cloude_storage.git
+    Cоздаем папку для логов
+    sudo mkdir -p /backend_cloude_storage/logs
 
     Создаем базу данных
     Переключаемся на пользователя postgres командой
-    sudo su postgres
+     sudo su postgres
     Далее psql
+
+    или sudo -u postgres psql
+
     и задаем постгресюзеру пароль
     ALTER USER postgres WITH PASSWORD 'ваш пароль';
     и создаем базу данных
@@ -122,12 +127,12 @@ python manage.py runserver
 
     Заходим в папку backend_cloude_storage 
     Создаем файл .env командой
-    nano .env и он открывается для редактирования заполняем его по примеру .env.example
+    sudo nano .env и он открывается для редактирования заполняем его по примеру .env.example
 
     Далее создаем виртуальное окружение для проекта 
     python3 -m venv название окружения
     активируем окружение
-    source название окружения/bin/activate
+    source название_окружения/bin/activate
     устанавливаем зависимости
     pip install -r requirements.txt
     Создаем папку static командой
@@ -137,6 +142,17 @@ python manage.py runserver
     python manage.py migrate
 
 
+    Настраиваем Gunicorn
+    вводим команду
+    pip install gunicorn
+    создаем файл с настройками командой
+    sudo nano /etc/systemd/system/gunicorn.service
+    вписываем туда все что есть в файле gunicorn.example
+    проверяем статус командой
+    sudo systemctl status gunicorn
+    перезапускать 
+    sudo systemctl daemon-reload
+
     Далее установите ПО для сертификата(в данном случае сертификат будет самописный)
     sudo apt install openssl
     создаем директорию для сертификата если ее нет
@@ -144,7 +160,7 @@ python manage.py runserver
     генерируем сертификат командой
     sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
 -keyout /etc/ssl/private/django.key \
--out /etc/ssl/private/django.crt
+-out /etc/ssl/certs/django.crt
 При выполнении команды вам нужно будет ввести:
 Country Name (2 буквы, например RU)
 State or Province Name (например, Moscow)
@@ -155,16 +171,28 @@ Email Address
 
 Далее ставим права на сертификат
 sudo chmod 600 /etc/ssl/private/django.key
-sudo chmod 600 /etc/ssl/private/django.crt
+sudo chmod 600 /etc/ssl/certs/django.crt
 Затем создаем
 sudo openssl dhparam -out /etc/ssl/certs/dhparam.pem 2048
 и задаем права
 sudo chmod 600 /etc/ssl/certs/dhparam.pem
 sudo chown root:root /etc/ssl/certs/dhparam.pem
 далее проверьте все файлы
-sudo ls -la /etc/ssl/private/django.crt
+sudo ls -la /etc/ssl/certs/django.crt
 sudo ls -la /etc/ssl/private/django.key
 sudo ls -la /etc/ssl/certs/dhparam.pem
+     Памятка:
+    (Запускаем nginx командой
+    sudo systemctl start nginx
+    Сразу проверяем статус работы nginx командой
+    sudo systemctl status nginx
+
+    проверить коректность файла настроек nginx
+    sudo nginx -t
+    перезапустить nginx
+    sudo systemctl reload nginx)
+
+
 
 Настраиваем nginx откройте конфигурационный файл командой
 sudo nano /etc/nginx/sites-available/название
@@ -174,34 +202,29 @@ sudo nano /etc/nginx/sites-available/название
 sudo ln -s /etc/nginx/sites-available/название /etc/nginx/sites-enabled/
 сохраните изменения и проверьте синтаксис на наличие ошибок 
 sudo nginx -t
-вводим команду
-sudo ufw allow 'Nginx Full'
-
-Настраиваем Gunicorn
-создаем файл с настройками командой
-sudo nano /etc/systemd/system/gunicorn.service
-вписываем туда все что есть в файле gunicorn.example
-проверяем статус командой
- sudo systemctl status gunicorn
 
 
 
 
+ для фронтенда заходим в папку frontend_cloude_storage/cloude_storage
+ далее команда
+ curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+устанавливаем Ноду
+sudo apt install nodejs -y
+проверяем версии
+node -v    # Должно вывести v22.x.x
+npm -v
+Далее 
+npm install
+Далее 
+npm run build
+Далее копируем dist в static
+cp -r dist/* ../../backend_cloude_storage/static/
 
-
-
-
-
-
-
-
-
-    
-
-
-
-
-
+Проверяем доступность 
+- Frontend: http://ваш_айпи
+- Backend API: http://ваш_айпи/api/
+- Админка: http://ваш_айпи/admin/
 
 
 
